@@ -1,7 +1,7 @@
 import os
 import torch
 import numpy as np
-
+import h5py
 import pickle
 from tqdm.auto import trange, tqdm
 from torch.utils.data import Dataset
@@ -60,6 +60,31 @@ def segment(states, actions, rewards, terminals):
 
     return trajectories, trajectories_lens
 
+def load_hdf5_bullet(path):
+    hdf5_store = h5py.File(path, "r")
+    obs_ = hdf5_store["train_x"][:]
+    action_ = hdf5_store["train_y"][:]
+    reward_ = np.ones((obs_.shape[0], obs_.shape[1], 1))
+    done_ = np.zeros((obs_.shape[0], obs_.shape[1], 1))
+    done_[:, -1, :] = 1.0
+    real_done_ = np.zeros((obs_.shape[0], obs_.shape[1], 1))
+    real_done_[:, -1, :] = 1.0
+
+    # reshape the arrays to [train_x.shape[0] * train_x.shape[1], train_x.shape[2]] shape
+    obs_ = obs_.reshape(-1, obs_.shape[2])
+    action_ = action_.reshape(-1, action_.shape[2])
+    reward_ = reward_.reshape(-1, reward_.shape[2])
+    done_ = done_.reshape(-1, done_.shape[2])
+    real_done_ = real_done_.reshape(-1, real_done_.shape[2])
+
+    return {
+        'states': np.array(obs_),
+        'actions': np.array(action_),
+        'rewards': np.array(reward_),
+        'dones': np.array(done_),
+        'real_dones': np.array(real_done_)
+    }
+
 
 # adapted from https://github.com/jannerm/trajectory-transformer/blob/master/trajectory/datasets/sequence.py
 class DiscretizedDataset(Dataset):
@@ -69,7 +94,12 @@ class DiscretizedDataset(Dataset):
         self.num_bins = num_bins
         self.env = create_env(env_name)
 
-        dataset = d4rl_dataset(self.env)
+        if "BulletEnv" in env_name:
+            data_path = "./data/" 
+            dataset = load_hdf5_bullet(os.path.join(data_path, env_name + ".hdf5"))
+        else:
+            dataset = d4rl_dataset(self.env)
+        
         trajectories, traj_lengths = segment(
             dataset["states"],
             dataset["actions"],
@@ -127,7 +157,8 @@ class DiscretizedDataset(Dataset):
             loss_pad_mask[joined.shape[0]:] = 0
             joined = pad_along_axis(joined, pad_to=self.seq_len, axis=0)
 
-        joined_discrete = self.discretizer.encode(joined).reshape(-1).astype(np.long)
+        joined_discrete = self.discretizer.encode(
+            joined).reshape(-1).astype(np.int64)  # np.compat.long
         loss_pad_mask = loss_pad_mask.reshape(-1)
 
         return joined_discrete[:-1], joined_discrete[1:], loss_pad_mask[:-1]
