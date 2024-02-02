@@ -1,5 +1,6 @@
 import os
-import d4rl
+# import d4rl
+import pybullet_envs
 import gym
 import numpy as np
 from tqdm.auto import trange

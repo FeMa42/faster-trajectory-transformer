@@ -1,6 +1,7 @@
 import os
 import gym
-import d4rl
+import pybullet_envs
+# import d4rl
 import torch
 import imageio
 import numpy as np
